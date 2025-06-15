@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+
+# Build
+build/
+dist/
+*.spec
+
+# Logs
+log/
+
+# Large files
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# OS
+.DS_Store
+Thumbs.db 
