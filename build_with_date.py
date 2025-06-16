@@ -19,11 +19,16 @@ zip_name = f"Beatbot_{today}.zip"
 # 1. 打包
 cmd = [
     sys.executable, '-m', 'PyInstaller',
-    "--noconsole",
+    "--windowed",
     "--onefile",
     f'--add-data={ICON_DIR};{ICON_DIR}',
     "--name", exe_name.replace(".exe", ""),
-    MAIN_SCRIPT
+    MAIN_SCRIPT,
+    "--hidden-import=cv2.legacy",
+    "--hidden-import=cv2.legacy.TrackerCSRT_create",
+    "--hidden-import=cv2.legacy.TrackerCSRT",
+    "--hidden-import=cv2.TrackerCSRT_create",
+    "--hidden-import=openpyxl"
 ]
 print("打包命令：", " ".join(cmd))
 subprocess.run(cmd, check=True)
@@ -53,4 +58,12 @@ spec_file = MAIN_SCRIPT.replace(".py", ".spec")
 if os.path.exists(spec_file):
     os.remove(spec_file)
 
-print("打包完成！可分发 exe 或 zip 包。") 
+print("打包完成！可分发 exe 或 zip 包。")
+
+try:
+    # 轨迹线绘制相关代码
+    pass
+except Exception as e:
+    import traceback
+    with open('error.log', 'a', encoding='utf-8') as f:
+        f.write(traceback.format_exc()) 
