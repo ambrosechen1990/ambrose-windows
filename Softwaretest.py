@@ -427,6 +427,35 @@ class TrajectoryLine:
             cv2.destroyAllWindows()
 
 
+class IPInputDialog(simpledialog.Dialog):
+    def __init__(self, parent, title, history_file='ip_history.txt'):
+        self.history_file = history_file
+        self.ip_var = None
+        self.history = []
+        if os.path.exists(self.history_file):
+            with open(self.history_file, 'r') as f:
+                self.history = [line.strip() for line in f if line.strip()]
+        super().__init__(parent, title)
+    def body(self, master):
+        ttk.Label(master, text="请选择或输入机器IP地址：").grid(row=0, column=0, padx=5, pady=5)
+        self.combo = ttk.Combobox(master, values=self.history, width=25)
+        self.combo.grid(row=1, column=0, padx=5, pady=5)
+        self.combo.focus_set()
+        return self.combo
+    def apply(self):
+        ip = self.combo.get().strip()
+        if ip:
+            # 保存历史，去重，最多10个
+            if ip in self.history:
+                self.history.remove(ip)
+            self.history.insert(0, ip)
+            self.history = self.history[:10]
+            with open(self.history_file, 'w') as f:
+                for item in self.history:
+                    f.write(item + '\n')
+            self.ip_var = ip
+
+
 class MainApplication:
     def __init__(self, root):
         print("进入MainApplication.__init__")
@@ -720,11 +749,16 @@ class MainApplication:
             "【使用帮助】\n"
             "1. 点击'使用帮助'卡片可随时查看本说明。\n"
         )
-        text = tk.Text(self.help_win, wrap="word", font=("微软雅黑", 12), padx=10, pady=10)
+        # 用grid布局分上下两行，保证版本号可见
+        content_frame = ttk.Frame(self.help_win)
+        content_frame.pack(expand=True, fill="both")
+        content_frame.rowconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=0)
+        content_frame.columnconfigure(0, weight=1)
+        text = tk.Text(content_frame, wrap="word", font=("微软雅黑", 12), padx=10, pady=10)
         text.insert("1.0", help_text)
         text.config(state="disabled")
-        text.pack(expand=True, fill="both", padx=10, pady=10)
-        # 在帮助窗口下方添加版本信息
+        text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         import datetime, os
         version_file = os.path.join(os.path.dirname(__file__), 'help_version.txt')
         today = datetime.datetime.now().strftime('%Y%m%d')
@@ -740,8 +774,8 @@ class MainApplication:
         else:
             with open(version_file, 'w') as f:
                 f.write(version + '\n')
-        version_label = ttk.Label(self.help_win, text=f"版本号：{version}", font=("微软雅黑", 10), foreground="#888888")
-        version_label.pack(side="bottom", pady=(0, 8))
+        version_label = ttk.Label(content_frame, text=f"版本号：{version}", font=("微软雅黑", 10), foreground="#888888")
+        version_label.grid(row=1, column=0, sticky="ew", pady=(0, 8))
 
     def unzip_and_parse_zip(self):
         archive_path = filedialog.askopenfilename(
@@ -785,7 +819,7 @@ class MainApplication:
             for idx, result in enumerate(executor.map(process_one_bin, bin_files), 1):
                 count += result
                 c = count
-                self.root.after(0, self.update_card_progress, 0, 1, i, total, f"{c}/{total} bin文件解析中...")
+                self.root.after(0, self.update_card_progress, 0, 1, c, total, f"{c}/{total} bin文件解析中...")
         self.root.after(0, self.close_card_progress, 0, 1)
         self.root.after(0, lambda: messagebox.showinfo("完成", f"共解析了 {count} 个 bin 文件"))
 
@@ -864,9 +898,12 @@ class MainApplication:
             return False
 
     def pack_log(self):
-        # 日志打包下载功能，弹窗输入IP
-        ip = simpledialog.askstring("日志打包下载", "请输入机器IP地址（如192.168.1.100）:")
-        if not ip or not ip.strip():
+        # 日志打包下载功能，弹窗选择/输入IP
+        dlg = IPInputDialog(self.root, "日志打包下载")
+        ip = dlg.ip_var
+        if ip is None:
+            return  # 用户点击取消，直接返回不提示
+        if not ip.strip():
             messagebox.showerror("输入错误", "IP地址不能为空！")
             return
         if not self.is_same_lan(ip):
@@ -875,34 +912,69 @@ class MainApplication:
         def do_pack():
             import subprocess, time, os
             try:
-                # 1. adb root
+                self.root.after(0, lambda: self.show_card_progress(0, 2, 100, "正在连接设备..."))
                 root_cmd = f'adb -s {ip}:5555 root'
                 subprocess.Popen(root_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=10)
-                # 2. adb connect
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 20, 100, "正在连接设备..."))
                 connect_cmd = f'adb connect {ip}:5555'
                 proc = subprocess.Popen(connect_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 out, _ = proc.communicate(timeout=10)
                 out_str = out.decode(errors='ignore')
                 if 'connected to' not in out_str:
-                    self.root.after(0, lambda: messagebox.showerror("连接失败", f"ADB连接失败：{out_str}"))
+                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("连接失败", f"ADB连接失败：{out_str}")])
                     return
-                # 3. 执行打包命令（假设有脚本或命令）
-                # 这里请根据你实际的打包命令替换下方内容
-                pack_cmd = f'adb -s {ip}:5555 shell "cd /data && tar -czf /data/manual_pack-{ip}.tar.gz log"'
-                subprocess.Popen(pack_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=30)
-                # 4. 下载日志包
-                local_path = os.path.join(os.getcwd(), f"manual_pack-{ip}.tar.gz")
-                pull_cmd = f'adb -s {ip}:5555 pull /data/manual_pack-{ip}.tar.gz "{local_path}"'
-                subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=30)
-                self.root.after(0, lambda: messagebox.showinfo("完成", f"日志已下载至: {local_path}"))
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 40, 100, "正在获取设备信息..."))
+                # 获取SN，优先读取/mnt/private/sn.txt
+                sn = "UNKNOWN"
+                try:
+                    sn_cmd = f'adb -s {ip}:5555 shell "cat /mnt/private/sn.txt"'
+                    sn_proc = subprocess.Popen(sn_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    sn_out, _ = sn_proc.communicate(timeout=10)
+                    sn = sn_out.decode(errors='ignore').strip()
+                    if not sn or "not found" in sn or "error" in sn.lower():
+                        # 尝试hostname
+                        sn_cmd2 = f'adb -s {ip}:5555 shell "hostname"'
+                        sn_proc2 = subprocess.Popen(sn_cmd2, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                        sn_out2, _ = sn_proc2.communicate(timeout=10)
+                        sn = sn_out2.decode(errors='ignore').strip() or "UNKNOWN"
+                except Exception:
+                    sn = "UNKNOWN"
+                # 获取时间戳
+                time_cmd = f'adb -s {ip}:5555 shell "date +%Y-%m-%d-%H-%M-%S"'
+                time_proc = subprocess.Popen(time_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                timestamp, _ = time_proc.communicate(timeout=10)
+                timestamp = timestamp.decode(errors='ignore').strip()
+                # 打包前删除旧包
+                clean_cmd = f'adb -s {ip}:5555 shell "rm -f /data/manual_pack-{sn}-*.tar.gz"'
+                subprocess.Popen(clean_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=30)
+                # 打包
+                tar_name = f"/data/manual_pack-{sn}-{timestamp}.tar.gz"
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 50, 100, "正在打包日志..."))
+                pack_cmd = (
+                    f'adb -s {ip}:5555 shell "tar -czf {tar_name} '
+                    '/data/clean_record /data/conf /data/DP_clean_record /data/log /data/transfer_data '
+                    '/etc/os_version /mnt/private /tmp/log /tmp/XM_LOG"'
+                )
+                subprocess.Popen(pack_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=300)
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 70, 100, "正在下载日志包..."))
+                dist_dir = r'D:\\dist'
+                os.makedirs(dist_dir, exist_ok=True)
+                local_path = os.path.join(dist_dir, os.path.basename(tar_name))
+                pull_cmd = f'adb -s {ip}:5555 pull {tar_name} "{local_path}"'
+                subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=300)
+                self.root.after(0, lambda: [self.update_card_progress(0, 2, 100, 100, "日志打包并下载完成"), self.close_card_progress(0, 2), messagebox.showinfo("完成", f"日志已下载至: {local_path}")])
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("异常", f"日志打包流程异常：{e}"))
+                err_msg = str(e)
+                self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("异常", f"日志打包流程异常：{err_msg}")])
         threading.Thread(target=do_pack, daemon=True).start()
 
     def delete_log(self):
-        # 日志一键删除功能
-        ip = simpledialog.askstring("日志一键删除", "请输入机器IP地址（如192.168.1.100）:")
-        if not ip or not ip.strip():
+        # 日志一键删除功能，弹窗选择/输入IP
+        dlg = IPInputDialog(self.root, "日志一键删除")
+        ip = dlg.ip_var
+        if ip is None:
+            return  # 用户点击取消，直接返回不提示
+        if not ip.strip():
             messagebox.showerror("输入错误", "IP地址不能为空！")
             return
         if not self.is_same_lan(ip):
@@ -911,10 +983,8 @@ class MainApplication:
         def do_delete():
             import subprocess, time
             try:
-                # 1. adb root
                 root_cmd = f'adb -s {ip}:5555 root'
                 subprocess.Popen(root_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=10)
-                # 2. adb connect
                 connect_cmd = f'adb connect {ip}:5555'
                 proc = subprocess.Popen(connect_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 out, _ = proc.communicate(timeout=10)
@@ -922,7 +992,6 @@ class MainApplication:
                 if 'connected to' not in out_str:
                     self.root.after(0, lambda: messagebox.showerror("连接失败", f"ADB连接失败：{out_str}"))
                     return
-                # 3. adb shell绝对路径删除日志
                 cmds = [
                     f'adb -s {ip}:5555 shell "rm -rf /data/log/*"',
                     f'adb -s {ip}:5555 shell "rm -rf /tmp/log/*"'

@@ -82,12 +82,14 @@ def get_history(path):
             return json.load(f)
     return []
 
+
 def save_history(path, value):
     history = get_history(path)
     if value and value not in history:
         history.append(value)
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(history, f, ensure_ascii=False)
+
 
 def show_info_dialog():
     root = tk.Toplevel()
@@ -105,13 +107,16 @@ def show_info_dialog():
     pool_combo.grid(row=1, column=1)
     tk.Label(root, text="机器阶段:").grid(row=2, column=0)
     stage_var = tk.StringVar()
-    stage_combo = ttk.Combobox(root, textvariable=stage_var, values=["手板","T0","EVT1","EVT2","DVT1","DVT2","MP"], width=30, font=("微软雅黑", 14))
+    stage_combo = ttk.Combobox(root, textvariable=stage_var,
+                               values=["手板", "T0", "EVT1", "EVT2", "DVT1", "DVT2", "MP"], width=30,
+                               font=("微软雅黑", 14))
     stage_combo.grid(row=2, column=1)
     tk.Label(root, text="固件版本号:").grid(row=3, column=0)
     fw_var = tk.StringVar()
     fw_combo = ttk.Combobox(root, textvariable=fw_var, values=fw_history, width=30, font=("微软雅黑", 14))
     fw_combo.grid(row=3, column=1)
     result = {}
+
     def on_ok():
         result['sn'] = sn_var.get()
         result['pool'] = pool_var.get()
@@ -121,10 +126,12 @@ def show_info_dialog():
         save_history('pool_history.json', result['pool'])
         save_history('fw_history.json', result['fw'])
         root.destroy()
+
     tk.Button(root, text="确定", command=on_ok, font=("微软雅黑", 14)).grid(row=4, column=0, columnspan=2, pady=10)
     root.grab_set()
     root.wait_window()
     return result
+
 
 def append_to_excel(info, img_path):
     dist_dir = r'D:/dist'
@@ -133,10 +140,13 @@ def append_to_excel(info, img_path):
     if not os.path.exists(excel_path):
         wb = Workbook()
         ws = wb.active
-        ws.append(['序号','视频开始时间','机器序号','泳池编号','机器阶段','固件版本号','绘制完成轨迹线地图','结束状态','覆盖率'])
+        ws.append(
+            ['序号', '视频开始时间', '机器序号', '泳池编号', '机器阶段', '固件版本号', '绘制完成轨迹线地图', '结束状态',
+             '覆盖率'])
         for cell in ws[ws.max_row]:
             cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
-        row = [ws.max_row, info['start_time'], info['sn'], info['pool'], info['stage'], info['fw'], os.path.basename(img_path), info['end_status'], info['coverage']]
+        row = [ws.max_row, info['start_time'], info['sn'], info['pool'], info['stage'], info['fw'],
+               os.path.basename(img_path), info['end_status'], info['coverage']]
         ws.append(row)
         for cell in ws[ws.max_row]:
             cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
@@ -161,7 +171,8 @@ def append_to_excel(info, img_path):
     else:
         wb = load_workbook(excel_path)
         ws = wb.active
-        row = [ws.max_row, info['start_time'], info['sn'], info['pool'], info['stage'], info['fw'], os.path.basename(img_path), info['end_status'], info['coverage']]
+        row = [ws.max_row, info['start_time'], info['sn'], info['pool'], info['stage'], info['fw'],
+               os.path.basename(img_path), info['end_status'], info['coverage']]
         ws.append(row)
         for cell in ws[ws.max_row]:
             cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
@@ -224,7 +235,7 @@ class TrajectoryLine:
 
     def extract_time_from_frame(self, frame):
         h, w, _ = frame.shape
-        roi = frame[h-60:h, w-250:w]  # 右下角区域，可根据实际调整
+        roi = frame[h - 60:h, w - 250:w]  # 右下角区域，可根据实际调整
         pil_img = Image.fromarray(cv2.cvtColor(roi, cv2.COLOR_BGR2RGB))
         text = pytesseract.image_to_string(pil_img, config='--psm 7')
         match = re.search(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', text)
@@ -289,13 +300,13 @@ class TrajectoryLine:
 
                 cv2.imshow("Tracking", temp_frame)
                 key = cv2.waitKey(1) & 0xFF
-                
+
                 # 检查窗口是否被关闭
                 if cv2.getWindowProperty("Tracking", cv2.WND_PROP_VISIBLE) < 1:
                     print("窗口被关闭，退出多边形绘制")
                     cv2.destroyAllWindows()
                     return
-                    
+
                 if key == ord('q') and len(polygon_points) > 2:
                     drawing_polygon = False
 
@@ -321,7 +332,7 @@ class TrajectoryLine:
 
             print("按空格键选择要跟踪的目标，按 q 键退出")
             end_status = 'Yes'
-            
+
             while True:
                 frame_count += 1
                 if not ret:
@@ -331,13 +342,15 @@ class TrajectoryLine:
                 overlay = frame.copy()
 
                 # 显示多边形区域
-                cv2.polylines(overlay, [np.array(polygon_points, np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
+                cv2.polylines(overlay, [np.array(polygon_points, np.int32)], isClosed=True, color=(0, 255, 255),
+                              thickness=2)
 
                 # 绘制轨迹线（透明绿色）
                 for i in range(1, len(all_track_points)):
                     if all_track_points[i - 1] and all_track_points[i]:
                         cv2.line(overlay, all_track_points[i - 1], all_track_points[i], (0, 255, 0), self.TRACK_WIDTH)
-                        cv2.line(white_trail, all_track_points[i - 1], all_track_points[i], (127, 127, 127), max(1, self.TRACK_WIDTH // 4))
+                        cv2.line(white_trail, all_track_points[i - 1], all_track_points[i], (127, 127, 127),
+                                 max(1, self.TRACK_WIDTH // 4))
 
                 # 叠加白色轨迹层
                 track_overlay = cv2.add(overlay, white_trail)
@@ -350,7 +363,8 @@ class TrajectoryLine:
                             covered_area += 1
                     coverage_rate = (covered_area / polygon_area) * 100 if polygon_area > 0 else 0
 
-                cv2.putText(overlay, f"Coverage: {coverage_rate:.2f}%", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 139, 255), 2)
+                cv2.putText(overlay, f"Coverage: {coverage_rate:.2f}%", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 139, 255), 2)
 
                 # 显示进度条
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -358,8 +372,10 @@ class TrajectoryLine:
                 progress = current_frame / total_frames if total_frames > 0 else 0
 
                 progress_bar_width = int(self.FRAME_WIDTH * progress)
-                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (self.FRAME_WIDTH, self.FRAME_HEIGHT), (50, 50, 50), -1)
-                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (progress_bar_width, self.FRAME_HEIGHT), (0, 255, 0), -1)
+                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (self.FRAME_WIDTH, self.FRAME_HEIGHT), (50, 50, 50),
+                              -1)
+                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (progress_bar_width, self.FRAME_HEIGHT),
+                              (0, 255, 0), -1)
 
                 # 显示结果帧
                 alpha = 0.3
@@ -425,6 +441,37 @@ class TrajectoryLine:
             if 'cap' in locals():
                 cap.release()
             cv2.destroyAllWindows()
+
+
+class IPInputDialog(simpledialog.Dialog):
+    def __init__(self, parent, title, history_file='ip_history.txt'):
+        self.history_file = history_file
+        self.ip_var = None
+        self.history = []
+        if os.path.exists(self.history_file):
+            with open(self.history_file, 'r') as f:
+                self.history = [line.strip() for line in f if line.strip()]
+        super().__init__(parent, title)
+
+    def body(self, master):
+        ttk.Label(master, text="请选择或输入机器IP地址：").grid(row=0, column=0, padx=5, pady=5)
+        self.combo = ttk.Combobox(master, values=self.history, width=25)
+        self.combo.grid(row=1, column=0, padx=5, pady=5)
+        self.combo.focus_set()
+        return self.combo
+
+    def apply(self):
+        ip = self.combo.get().strip()
+        if ip:
+            # 保存历史，去重，最多10个
+            if ip in self.history:
+                self.history.remove(ip)
+            self.history.insert(0, ip)
+            self.history = self.history[:10]
+            with open(self.history_file, 'w') as f:
+                for item in self.history:
+                    f.write(item + '\n')
+            self.ip_var = ip
 
 
 class MainApplication:
@@ -506,10 +553,18 @@ class MainApplication:
         """创建功能区域（卡片尺寸固定+进度条区始终占位）"""
         self.card_progress = {}
         function_cards = [
-            {"name": "轨迹线绘制", "command": self.mcu_tools, "row": 0, "column": 0, "icon": resource_path("icons/轨迹线绘制.jpeg")},
-            {"name": "日志解析", "command": self.unzip_and_parse_zip, "row": 0, "column": 1, "icon": resource_path("icons/日志解析.jpeg")},
-            {"name": "日志打包下载", "command": self.pack_log, "row": 0, "column": 2, "icon": resource_path("icons/日志打包下载.jpeg")},
-            {"name": "使用帮助", "command": self.show_help, "row": 0, "column": 3, "icon": resource_path("icons/使用帮助.jpeg")},
+            {"name": "轨迹线绘制", "command": self.mcu_tools, "row": 0, "column": 0,
+             "icon": resource_path("icons/轨迹线绘制.jpeg")},
+            {"name": "日志解析", "command": self.unzip_and_parse_zip, "row": 0, "column": 1,
+             "icon": resource_path("icons/日志解析.jpeg")},
+            {"name": "日志打包下载", "command": self.pack_log, "row": 0, "column": 2,
+             "icon": resource_path("icons/日志打包下载.jpeg")},
+            {"name": "日志一键删除", "command": self.delete_log, "row": 0, "column": 3, "icon": None},
+            {"name": "使用帮助", "command": self.show_help, "row": 1, "column": 3,
+             "icon": resource_path("icons/使用帮助.jpeg")},
+            {"name": "", "command": lambda: None, "row": 1, "column": 0, "icon": None},
+            {"name": "", "command": lambda: None, "row": 1, "column": 1, "icon": None},
+            {"name": "", "command": lambda: None, "row": 1, "column": 2, "icon": None},
         ]
         for i in range(2):
             self.main_frame.grid_rowconfigure(i, weight=1)
@@ -538,60 +593,95 @@ class MainApplication:
                 content = ttk.Frame(frame)
                 content.pack(expand=True, fill='both')
                 # 进度条区（始终占位）
-                progress_area = ttk.Frame(frame, height=40)
+                progress_area = ttk.Frame(frame, height=70)
                 progress_area.pack(fill='x', side='bottom')
                 progress_area.pack_propagate(False)
                 if func:
+                    # 优先加载PNG，其次JPEG/JPG，图片文件名与功能名一致
                     icon_img = None
-                    if func["icon"] and os.path.exists(func["icon"]):
+                    icon_path = None
+                    if func["name"]:
+                        for ext in [".png", ".jpeg", ".jpg"]:
+                            test_path = os.path.join(r'D:\py\Softwaretest\icons', f"{func['name']}{ext}")
+                            if os.path.exists(test_path):
+                                icon_path = test_path
+                                break
+                    if icon_path:
                         try:
-                            img = Image.open(func["icon"])
+                            img = Image.open(icon_path)
                             img = img.resize((64, 64), Image.ANTIALIAS)
                             icon_img = ImageTk.PhotoImage(img)
                         except Exception:
-                            pass
-                    label = ttk.Label(content, text=func["name"], style='Function.TLabel', image=icon_img, compound='top')
-                    label.image = icon_img
-                    label.pack(expand=True, fill='both', pady=(20, 0))
+                            icon_img = None
+                    # 图片在内容区顶部居中
+                    if icon_img:
+                        icon_label = ttk.Label(content, image=icon_img, cursor='hand2')
+                        icon_label.image = icon_img
+                        icon_label.pack(side='top', pady=(40, 0))
+                        icon_label.bind("<Button-1>", lambda e, f=func["command"]: f())
+                    elif func["name"]:
+                        # 没有图片时用表情符号
+                        default_icon = '📊' if func['name'] == '轨迹线绘制' else (
+                            '📄' if func['name'] == '日志解析' else ('📦' if func['name'] == '日志打包下载' else (
+                                '⚡' if func['name'] == '日志一键删除' else (
+                                    '📖' if func['name'] == '使用帮助' else ''))))
+                        if default_icon:
+                            icon_label = ttk.Label(content, text=default_icon, style='Icon.TLabel', cursor='hand2')
+                            icon_label.pack(side='top', pady=(40, 0))
+                            icon_label.bind("<Button-1>", lambda e, f=func["command"]: f())
+                    label = ttk.Label(content, text=func["name"], style='Function.TLabel')
+                    label.pack(expand=True, fill='both', pady=(2, 0))
                     label.bind("<Button-1>", lambda e, f=func["command"]: f())
                     # 独立进度条和标签
                     progress_var = tk.DoubleVar()
+                    # 进度条区高度更大，内容垂直居中
+                    progress_area.config(height=70)
+                    # 进度条提示文字（上方小字体，居中）
+                    progress_text = ttk.Label(progress_area, text="", font=("微软雅黑", 9), foreground="#666666",
+                                              anchor='center', justify='center')
+                    progress_text.place(relx=0.5, rely=0.25, anchor='center')  # 垂直居中偏上
                     progress_bar = ttk.Progressbar(progress_area, variable=progress_var, length=180, mode='determinate')
+                    progress_bar.place(relx=0.5, rely=0.65, anchor='center')  # 垂直居中偏下
                     progress_label = ttk.Label(progress_area, text="", font=("微软雅黑", 10))
-                    progress_bar.pack(side='top', fill='x', padx=20, pady=(5, 0))
-                    progress_label.pack(side='top', fill='x', padx=20, pady=(0, 10))
-                    progress_bar.pack_forget()
-                    progress_label.pack_forget()
+                    progress_label.pack_forget()  # 只用上方提示，不再用下方
+                    progress_bar.place_forget()
+                    progress_text.place_forget()
                     self.card_progress[(row, col)] = {
                         'bar': progress_bar,
-                        'label': progress_label,
-                        'var': progress_var
+                        'label': progress_label,  # 兼容旧代码，实际不再用
+                        'var': progress_var,
+                        'text': progress_text
                     }
 
-    def show_card_progress(self, row, col, total):
+    def show_card_progress(self, row, col, total, text=None):
         p = self.card_progress.get((row, col))
         if p:
             p['bar'].config(maximum=total)
             p['var'].set(0)
-            p['bar'].pack(side='top', fill='x', padx=20, pady=(5, 0))
-            p['label'].pack(side='top', fill='x', padx=20, pady=(0, 10))
+            if text is not None:
+                p['text'].config(text=text)
+                p['text'].place(relx=0.5, rely=0.25, anchor='center')
+            else:
+                p['text'].config(text="")
+                p['text'].place(relx=0.5, rely=0.25, anchor='center')
+            p['bar'].place(relx=0.5, rely=0.65, anchor='center')
 
     def update_card_progress(self, row, col, value, total, text=None):
         p = self.card_progress.get((row, col))
         if p:
             p['bar'].config(maximum=total)
             p['var'].set(value)
-            if text:
-                p['label'].config(text=text)
+            if text is not None:
+                p['text'].config(text=text)
             else:
                 percent = int((value / total) * 100)
-                p['label'].config(text=f"进度：{percent}%")
+                p['text'].config(text=f"进度：{percent}%")
 
     def close_card_progress(self, row, col):
         p = self.card_progress.get((row, col))
         if p:
-            p['bar'].pack_forget()
-            p['label'].pack_forget()
+            p['bar'].place_forget()
+            p['text'].place_forget()
 
     def _make_card_command(self, cmd):
         return lambda e: cmd()
@@ -614,6 +704,8 @@ class MainApplication:
             )
             if video_path:
                 self.trajectory.process_video(video_path, info)
+                # 新增：结束时弹窗提示
+                messagebox.showinfo("提示", "数据已上传至 D:/dist/轨迹线绘制记录.xlsx")
 
     def show_progress(self, total):
         if not hasattr(self, 'progress_var'):
@@ -665,15 +757,51 @@ class MainApplication:
             "6. 轨迹线绘制信息（含图片、覆盖率、结束状态等）会自动写入Excel表格，图片自动缩放嵌入单元格。\n"
             "7. 需要本机已安装Tesseract-OCR（并配置到PATH），否则无法识别视频时间。\n"
             "8. openpyxl依赖已集成打包，无需单独安装。源码运行需pip install openpyxl。\n\n"
-            "【文件解析】\n"
-            "1. 点击'文件解析'卡片，可选择zip、tar.gz或tar格式的压缩包，自动解压并解析所有bin文件。\n"
+            "【日志解析】\n"
+            "1. 点击'日志解析'卡片，可选择zip、tar.gz或tar格式的压缩包，自动解压并解析所有bin文件。\n"
             "2. 解析进度通过进度条显示，全部完成后弹窗提示解析数量。\n"
-            "3. 解析生成的log文件与bin文件在同一目录，支持多层文件夹结构。"
+            "3. 解析生成的log文件与bin文件在同一目录，支持多层文件夹结构。\n\n"
+            "【日志打包下载】\n"
+            "1. 点击'日志打包下载'卡片，弹窗输入目标设备IP地址（如192.168.1.100）。\n"
+            "2. 系统会自动校验是否在同一局域网，连接设备。\n"
+            "3. 自动执行日志打包并下载到本地，完成后弹窗提示保存路径。\n"
+            "4. 若连接或打包失败，会有详细错误提示。\n\n"
+            "【日志一键删除】\n"
+            "1. 点击'日志一键删除'卡片，弹窗输入目标设备IP地址。\n"
+            "2. 系统会自动校验是否在同一局域网，连接设备。\n"
+            "3. 自动清空设备/data/log和/tmp/log目录下所有日志文件。\n"
+            "4. 清除完成后弹窗提示。\n"
+            "5. 若连接或权限不足，会有详细错误提示。\n\n"
+            "【使用帮助】\n"
+            "1. 点击'使用帮助'卡片可随时查看本说明。\n"
         )
-        text = tk.Text(self.help_win, wrap="word", font=("微软雅黑", 12), padx=10, pady=10)
+        # 用grid布局分上下两行，保证版本号可见
+        content_frame = ttk.Frame(self.help_win)
+        content_frame.pack(expand=True, fill="both")
+        content_frame.rowconfigure(0, weight=1)
+        content_frame.rowconfigure(1, weight=0)
+        content_frame.columnconfigure(0, weight=1)
+        text = tk.Text(content_frame, wrap="word", font=("微软雅黑", 12), padx=10, pady=10)
         text.insert("1.0", help_text)
         text.config(state="disabled")
-        text.pack(expand=True, fill="both", padx=10, pady=10)
+        text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        import datetime, os
+        version_file = os.path.join(os.path.dirname(__file__), 'help_version.txt')
+        today = datetime.datetime.now().strftime('%Y%m%d')
+        version = f'{today}-1'
+        if os.path.exists(version_file):
+            with open(version_file, 'r+') as f:
+                lines = f.readlines()
+                if lines and lines[-1].startswith(today):
+                    last = lines[-1].strip()
+                    last_num = int(last.split('-')[-1])
+                    version = f'{today}-{last_num + 1}'
+                f.write(version + '\n')
+        else:
+            with open(version_file, 'w') as f:
+                f.write(version + '\n')
+        version_label = ttk.Label(content_frame, text=f"版本号：{version}", font=("微软雅黑", 10), foreground="#888888")
+        version_label.grid(row=1, column=0, sticky="ew", pady=(0, 8))
 
     def unzip_and_parse_zip(self):
         archive_path = filedialog.askopenfilename(
@@ -714,10 +842,11 @@ class MainApplication:
         self.root.after(0, lambda: self.show_card_progress(0, 1, total))
         count = 0
         with ProcessPoolExecutor(max_workers=4) as executor:
-            for result in executor.map(process_one_bin, bin_files):
+            for idx, result in enumerate(executor.map(process_one_bin, bin_files), 1):
                 count += result
-                self.root.after(0, lambda c=count: self.update_card_progress(0, 1, c, total, f"解析中... ({c}/{total})"))
-        self.root.after(0, self.close_card_progress(0, 1))
+                c = count
+                self.root.after(0, self.update_card_progress, 0, 1, c, total, f"{c}/{total} bin文件解析中...")
+        self.root.after(0, self.close_card_progress, 0, 1)
         self.root.after(0, lambda: messagebox.showinfo("完成", f"共解析了 {count} 个 bin 文件"))
 
     def batch_convert_multi_folders(self, folders):
@@ -767,7 +896,8 @@ class MainApplication:
                         count += result
                     except Exception as e:
                         print(f"[ERROR] 子任务失败: {e}")
-                    self.root.after(0, lambda i=i: self.update_card_progress(0, 1, i, total, f"解析中... ({i}/{total})"))
+                    self.root.after(0,
+                                    lambda i=i: self.update_card_progress(0, 1, i, total, f"解析中... ({i}/{total})"))
 
             def show_msg():
                 if self._has_shown_multi_folder_msg:
@@ -795,73 +925,131 @@ class MainApplication:
             return False
 
     def pack_log(self):
-        """日志打包下载功能"""
-        ip = simpledialog.askstring("输入", "请输入设备IP：")
-        if not ip:
+        # 日志打包下载功能，弹窗选择/输入IP
+        dlg = IPInputDialog(self.root, "日志打包下载")
+        ip = dlg.ip_var
+        if ip is None:
+            return  # 用户点击取消，直接返回不提示
+        if not ip.strip():
+            messagebox.showerror("输入错误", "IP地址不能为空！")
             return
         if not self.is_same_lan(ip):
-            messagebox.showerror("网络错误", "不在同一局域网内，请检查IP！")
+            messagebox.showerror("网络错误", "目标设备不在同一局域网内，无法操作！")
             return
-        # 显示进度条（使用日志打包下载卡片的进度条）
-        self.show_card_progress(0, 2, 100)
-        self.update_card_progress(0, 2, 0, 100, "打包中...")
+
         def do_pack():
+            import subprocess, time, os
             try:
-                # 1. adb connect
-                self.update_card_progress(0, 2, 0, 100, "正在连接设备...")
-                connect_proc = subprocess.run(f'adb connect {ip}:5555', shell=True, capture_output=True, text=True, timeout=10)
-                if ("connected" not in connect_proc.stdout) and ("already connected" not in connect_proc.stdout):
-                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("连接失败", connect_proc.stdout+connect_proc.stderr)])
+                self.root.after(0, lambda: self.show_card_progress(0, 2, 100, "正在连接设备..."))
+                root_cmd = f'adb -s {ip}:5555 root'
+                subprocess.Popen(root_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(
+                    timeout=10)
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 20, 100, "正在连接设备..."))
+                connect_cmd = f'adb connect {ip}:5555'
+                proc = subprocess.Popen(connect_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                out, _ = proc.communicate(timeout=10)
+                out_str = out.decode(errors='ignore')
+                if 'connected to' not in out_str:
+                    self.root.after(0, lambda: [self.close_card_progress(0, 2),
+                                                messagebox.showerror("连接失败", f"ADB连接失败：{out_str}")])
                     return
-                # 2. 执行pack命令
-                self.update_card_progress(0, 2, 10, 100, "执行pack命令...")
-                pack_proc = subprocess.run(f'adb shell pack', shell=True, capture_output=True, text=True, timeout=300)
-                print("[PACK_CMD_OUT]", pack_proc.stdout)
-                print("[PACK_CMD_ERR]", pack_proc.stderr)
-                # 3. 查找日志包
-                self.update_card_progress(0, 2, 60, 100, "打包完成，准备下载日志包...")
-                ls_cmd = "adb shell ls /data/"
-                ls_proc = subprocess.run(ls_cmd, shell=True, capture_output=True, text=True)
-                print("[DEBUG] adb shell ls /data/ 输出：")
-                print(ls_proc.stdout)
-                ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
-                log_files = []
-                pattern = re.compile(r"^manual_pack-.*\.tar\.gz$")
-                for f in ls_proc.stdout.splitlines():
-                    fname = ansi_escape.sub('', f.strip())
-                    if not fname:
-                        continue
-                    print(f"[DEBUG] 文件名: '{fname}' repr: {repr(fname)} len: {len(fname)}")
-                    if pattern.match(fname):
-                        log_files.append(fname)
-                print(f"[DEBUG] 匹配到的日志包文件: {log_files}")
-                if not log_files:
-                    print("[ERROR] 未找到日志包，全部文件名如下：")
-                    for f in ls_proc.stdout.splitlines():
-                        print(f"  [ALL FILE] '{f}'")
-                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("未找到日志包", "设备未生成日志包，请检查pack脚本")])
-                    return
-                # 4. 下载日志包
-                remote_log_file = f"/data/{log_files[0]}"
-                local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-                os.makedirs(local_path, exist_ok=True)
-                self.update_card_progress(0, 2, 80, 100, "正在下载日志包...")
-                pull_cmd = f'adb pull {remote_log_file} {local_path}'
-                proc = subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                out, _ = proc.communicate()
-                if proc.returncode != 0:
-                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("下载失败", out.decode(errors='ignore'))])
-                    return
-                self.update_card_progress(0, 2, 100, 100, "日志打包并下载完成")
-                self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showinfo("完成", f"日志已下载至: {local_path}")])
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 40, 100, "正在获取设备信息..."))
+                # 获取SN，优先读取/mnt/private/sn.txt
+                sn = "UNKNOWN"
+                try:
+                    sn_cmd = f'adb -s {ip}:5555 shell "cat /mnt/private/sn.txt"'
+                    sn_proc = subprocess.Popen(sn_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    sn_out, _ = sn_proc.communicate(timeout=10)
+                    sn = sn_out.decode(errors='ignore').strip()
+                    if not sn or "not found" in sn or "error" in sn.lower():
+                        # 尝试hostname
+                        sn_cmd2 = f'adb -s {ip}:5555 shell "hostname"'
+                        sn_proc2 = subprocess.Popen(sn_cmd2, shell=True, stdout=subprocess.PIPE,
+                                                    stderr=subprocess.STDOUT)
+                        sn_out2, _ = sn_proc2.communicate(timeout=10)
+                        sn = sn_out2.decode(errors='ignore').strip() or "UNKNOWN"
+                except Exception:
+                    sn = "UNKNOWN"
+                # 获取时间戳
+                time_cmd = f'adb -s {ip}:5555 shell "date +%Y-%m-%d-%H-%M-%S"'
+                time_proc = subprocess.Popen(time_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                timestamp, _ = time_proc.communicate(timeout=10)
+                timestamp = timestamp.decode(errors='ignore').strip()
+                # 打包前删除旧包
+                clean_cmd = f'adb -s {ip}:5555 shell "rm -f /data/manual_pack-{sn}-*.tar.gz"'
+                subprocess.Popen(clean_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(
+                    timeout=30)
+                # 打包
+                tar_name = f"/data/manual_pack-{sn}-{timestamp}.tar.gz"
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 50, 100, "正在打包日志..."))
+                pack_cmd = (
+                    f'adb -s {ip}:5555 shell "tar -czf {tar_name} '
+                    '/data/clean_record /data/conf /data/DP_clean_record /data/log /data/transfer_data '
+                    '/etc/os_version /mnt/private /tmp/log /tmp/XM_LOG"'
+                )
+                subprocess.Popen(pack_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(
+                    timeout=300)
+                self.root.after(0, lambda: self.update_card_progress(0, 2, 70, 100, "正在下载日志包..."))
+                dist_dir = r'D:\\dist'
+                os.makedirs(dist_dir, exist_ok=True)
+                local_path = os.path.join(dist_dir, os.path.basename(tar_name))
+                pull_cmd = f'adb -s {ip}:5555 pull {tar_name} "{local_path}"'
+                subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(
+                    timeout=300)
+                self.root.after(0, lambda: [self.update_card_progress(0, 2, 100, 100, "日志打包并下载完成"),
+                                            self.close_card_progress(0, 2),
+                                            messagebox.showinfo("完成", f"日志已下载至: {local_path}")])
             except Exception as e:
-                self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("异常", f"日志打包流程异常：{e}")])
+                err_msg = str(e)
+                self.root.after(0, lambda: [self.close_card_progress(0, 2),
+                                            messagebox.showerror("异常", f"日志打包流程异常：{err_msg}")])
+
         threading.Thread(target=do_pack, daemon=True).start()
+
+    def delete_log(self):
+        # 日志一键删除功能，弹窗选择/输入IP
+        dlg = IPInputDialog(self.root, "日志一键删除")
+        ip = dlg.ip_var
+        if ip is None:
+            return  # 用户点击取消，直接返回不提示
+        if not ip.strip():
+            messagebox.showerror("输入错误", "IP地址不能为空！")
+            return
+        if not self.is_same_lan(ip):
+            messagebox.showerror("网络错误", "目标设备不在同一局域网内，无法操作！")
+            return
+
+        def do_delete():
+            import subprocess, time
+            try:
+                root_cmd = f'adb -s {ip}:5555 root'
+                subprocess.Popen(root_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(
+                    timeout=10)
+                connect_cmd = f'adb connect {ip}:5555'
+                proc = subprocess.Popen(connect_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                out, _ = proc.communicate(timeout=10)
+                out_str = out.decode(errors='ignore')
+                if 'connected to' not in out_str:
+                    self.root.after(0, lambda: messagebox.showerror("连接失败", f"ADB连接失败：{out_str}"))
+                    return
+                cmds = [
+                    f'adb -s {ip}:5555 shell "rm -rf /data/log/*"',
+                    f'adb -s {ip}:5555 shell "rm -rf /tmp/log/*"'
+                ]
+                for cmd in cmds:
+                    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    p.communicate(timeout=10)
+                self.root.after(0, lambda: messagebox.showinfo("完成", "一键清除已完成"))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("异常", f"日志删除异常：{e}"))
+
+        threading.Thread(target=do_delete, daemon=True).start()
 
 
 # 保证主入口只在主进程执行，防止多进程时重复启动GUI
 if __name__ == "__main__":
     import traceback
+
     print("程序已启动")
     try:
         multiprocessing.freeze_support()  # 兼容 pyinstaller 多进程打包
