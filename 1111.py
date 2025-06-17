@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, Toplevel
+from tkinter import ttk, filedialog, messagebox, Toplevel, simpledialog
 import cv2
 import os
 from datetime import datetime
@@ -18,6 +18,17 @@ import multiprocessing
 import zipfile
 import tarfile
 from concurrent.futures import ProcessPoolExecutor
+import json
+from openpyxl import Workbook, load_workbook
+from openpyxl.drawing.image import Image as XLImage
+import openpyxl.styles
+from openpyxl.utils import get_column_letter
+import pytesseract
+import re
+import time
+import subprocess
+import webbrowser
+import socket
 
 
 def resource_path(relative_path):
@@ -64,6 +75,116 @@ def process_one_bin(args):
         return 0
 
 
+# 轨迹线绘制信息弹窗（含历史）
+def get_history(path):
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+def save_history(path, value):
+    history = get_history(path)
+    if value and value not in history:
+        history.append(value)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False)
+
+def show_info_dialog():
+    root = tk.Toplevel()
+    root.title("填写轨迹线信息")
+    sn_history = get_history('sn_history.json')
+    pool_history = get_history('pool_history.json')
+    fw_history = get_history('fw_history.json')
+    tk.Label(root, text="机器序号:").grid(row=0, column=0)
+    sn_var = tk.StringVar()
+    sn_combo = ttk.Combobox(root, textvariable=sn_var, values=sn_history, width=30, font=("微软雅黑", 14))
+    sn_combo.grid(row=0, column=1)
+    tk.Label(root, text="泳池编号:").grid(row=1, column=0)
+    pool_var = tk.StringVar()
+    pool_combo = ttk.Combobox(root, textvariable=pool_var, values=pool_history, width=30, font=("微软雅黑", 14))
+    pool_combo.grid(row=1, column=1)
+    tk.Label(root, text="机器阶段:").grid(row=2, column=0)
+    stage_var = tk.StringVar()
+    stage_combo = ttk.Combobox(root, textvariable=stage_var, values=["手板","T0","EVT1","EVT2","DVT1","DVT2","MP"], width=30, font=("微软雅黑", 14))
+    stage_combo.grid(row=2, column=1)
+    tk.Label(root, text="固件版本号:").grid(row=3, column=0)
+    fw_var = tk.StringVar()
+    fw_combo = ttk.Combobox(root, textvariable=fw_var, values=fw_history, width=30, font=("微软雅黑", 14))
+    fw_combo.grid(row=3, column=1)
+    result = {}
+    def on_ok():
+        result['sn'] = sn_var.get()
+        result['pool'] = pool_var.get()
+        result['stage'] = stage_var.get()
+        result['fw'] = fw_var.get()
+        save_history('sn_history.json', result['sn'])
+        save_history('pool_history.json', result['pool'])
+        save_history('fw_history.json', result['fw'])
+        root.destroy()
+    tk.Button(root, text="确定", command=on_ok, font=("微软雅黑", 14)).grid(row=4, column=0, columnspan=2, pady=10)
+    root.grab_set()
+    root.wait_window()
+    return result
+
+def append_to_excel(info, img_path):
+    dist_dir = r'D:/dist'
+    os.makedirs(dist_dir, exist_ok=True)
+    excel_path = os.path.join(dist_dir, '轨迹线绘制记录.xlsx')
+    if not os.path.exists(excel_path):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(['序号','视频开始时间','机器序号','泳池编号','机器阶段','固件版本号','绘制完成轨迹线地图','结束状态','覆盖率'])
+        for cell in ws[ws.max_row]:
+            cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+        row = [ws.max_row, info['start_time'], info['sn'], info['pool'], info['stage'], info['fw'], os.path.basename(img_path), info['end_status'], info['coverage']]
+        ws.append(row)
+        for cell in ws[ws.max_row]:
+            cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+        img = XLImage(img_path)
+        img.width = 200
+        img.height = 150
+        img.anchor = f'G{ws.max_row}'
+        ws.add_image(img)
+        col_letter = get_column_letter(7)
+        ws.column_dimensions[col_letter].width = 35
+        ws.row_dimensions[ws.max_row].height = 120
+        while True:
+            try:
+                wb.save(excel_path)
+                break
+            except PermissionError:
+                messagebox.showerror("保存失败", "Excel 文件已被打开，请关闭后点击确定重试。")
+                time.sleep(1)
+            except Exception as e:
+                messagebox.showerror("保存失败", f"保存 Excel 时发生错误：{e}")
+                break
+    else:
+        wb = load_workbook(excel_path)
+        ws = wb.active
+        row = [ws.max_row, info['start_time'], info['sn'], info['pool'], info['stage'], info['fw'], os.path.basename(img_path), info['end_status'], info['coverage']]
+        ws.append(row)
+        for cell in ws[ws.max_row]:
+            cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+        img = XLImage(img_path)
+        img.width = 200
+        img.height = 150
+        img.anchor = f'G{ws.max_row}'
+        ws.add_image(img)
+        col_letter = get_column_letter(7)
+        ws.column_dimensions[col_letter].width = 35
+        ws.row_dimensions[ws.max_row].height = 120
+        while True:
+            try:
+                wb.save(excel_path)
+                break
+            except PermissionError:
+                messagebox.showerror("保存失败", "Excel 文件已被打开，请关闭后点击确定重试。")
+                time.sleep(1)
+            except Exception as e:
+                messagebox.showerror("保存失败", f"保存 Excel 时发生错误：{e}")
+                break
+
+
 class TrajectoryLine:
     def __init__(self):
         # 固定视频帧大小和默认轨迹线宽度
@@ -89,40 +210,59 @@ class TrajectoryLine:
 
     def create_tracker(self):
         """创建跟踪器，兼容不同OpenCV版本"""
-        # 兼容不同OpenCV版本
-        if hasattr(cv2, 'legacy') and hasattr(cv2.legacy, 'TrackerCSRT_create'):
-            return cv2.legacy.TrackerCSRT_create()
-        elif hasattr(cv2, 'TrackerCSRT_create'):
-            return cv2.TrackerCSRT_create()
-        else:
-            from tkinter import messagebox
-            messagebox.showerror("错误", "你的OpenCV没有CSRT跟踪器，请安装opencv-contrib-python")
-            raise AttributeError("你的OpenCV没有CSRT跟踪器，请安装opencv-contrib-python")
+        try:
+            if hasattr(cv2, 'legacy') and hasattr(cv2.legacy, 'TrackerCSRT_create'):
+                return cv2.legacy.TrackerCSRT_create()
+            elif hasattr(cv2, 'TrackerCSRT_create'):
+                return cv2.TrackerCSRT_create()
+            else:
+                logging.error("未找到CSRT跟踪器")
+                return None
+        except Exception as e:
+            logging.error(f"创建跟踪器失败: {str(e)}")
+            return None
 
-    def process_video(self, video_path):
+    def extract_time_from_frame(self, frame):
+        h, w, _ = frame.shape
+        roi = frame[h-60:h, w-250:w]  # 右下角区域，可根据实际调整
+        pil_img = Image.fromarray(cv2.cvtColor(roi, cv2.COLOR_BGR2RGB))
+        text = pytesseract.image_to_string(pil_img, config='--psm 7')
+        match = re.search(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', text)
+        if match:
+            return match.group(0)
+        else:
+            return ""
+
+    def process_video(self, video_path, info):
         try:
             frame_count = 0
             coverage_rate = 0
             if not os.path.exists(video_path):
-                print(f"视频文件 {video_path} 不存在")
+                logging.error(f"视频文件 {video_path} 不存在")
                 return
 
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                print(f"无法打开视频文件 {video_path}")
+                logging.error(f"无法打开视频文件 {video_path}")
                 return
 
             ret, frame = cap.read()
             if not ret:
-                print("无法读取视频文件")
+                logging.error("无法读取视频文件")
                 return
+
+            # 自动识别视频右下角时间
+            video_time = self.extract_time_from_frame(frame)
+            if video_time:
+                info['start_time'] = video_time
+            else:
+                info['start_time'] = ""
 
             frame = cv2.resize(frame, (self.FRAME_WIDTH, self.FRAME_HEIGHT))
 
             tracker = None
             init_box = None
             all_track_points = []
-
             polygon_points = []  # 存储多边形的点
             drawing_polygon = True  # 标记是否在绘制多边形
 
@@ -132,13 +272,12 @@ class TrajectoryLine:
                     if event == cv2.EVENT_LBUTTONDOWN:
                         polygon_points.append((x, y))
                     elif event == cv2.EVENT_RBUTTONDOWN and len(polygon_points) > 2:
-                        # 右键点击完成闭环
                         drawing_polygon = False
 
             cv2.namedWindow("Tracking")
             cv2.setMouseCallback("Tracking", on_mouse)
-
             print("请使用鼠标左键点击绘制多边形区域，右键完成绘制")
+
             # 绘制多边形区域
             while drawing_polygon:
                 temp_frame = frame.copy()
@@ -150,6 +289,13 @@ class TrajectoryLine:
 
                 cv2.imshow("Tracking", temp_frame)
                 key = cv2.waitKey(1) & 0xFF
+                
+                # 检查窗口是否被关闭
+                if cv2.getWindowProperty("Tracking", cv2.WND_PROP_VISIBLE) < 1:
+                    print("窗口被关闭，退出多边形绘制")
+                    cv2.destroyAllWindows()
+                    return
+                    
                 if key == ord('q') and len(polygon_points) > 2:
                     drawing_polygon = False
 
@@ -174,6 +320,8 @@ class TrajectoryLine:
             white_trail = np.zeros((self.FRAME_HEIGHT, self.FRAME_WIDTH, 3), dtype=np.uint8)
 
             print("按空格键选择要跟踪的目标，按 q 键退出")
+            end_status = 'Yes'
+            
             while True:
                 frame_count += 1
                 if not ret:
@@ -183,15 +331,13 @@ class TrajectoryLine:
                 overlay = frame.copy()
 
                 # 显示多边形区域
-                cv2.polylines(overlay, [np.array(polygon_points, np.int32)], isClosed=True, color=(0, 255, 255),
-                              thickness=2)
+                cv2.polylines(overlay, [np.array(polygon_points, np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
 
                 # 绘制轨迹线（透明绿色）
                 for i in range(1, len(all_track_points)):
                     if all_track_points[i - 1] and all_track_points[i]:
                         cv2.line(overlay, all_track_points[i - 1], all_track_points[i], (0, 255, 0), self.TRACK_WIDTH)
-                        cv2.line(white_trail, all_track_points[i - 1], all_track_points[i], (127, 127, 127),
-                                 max(1, self.TRACK_WIDTH // 4))
+                        cv2.line(white_trail, all_track_points[i - 1], all_track_points[i], (127, 127, 127), max(1, self.TRACK_WIDTH // 4))
 
                 # 叠加白色轨迹层
                 track_overlay = cv2.add(overlay, white_trail)
@@ -204,8 +350,7 @@ class TrajectoryLine:
                             covered_area += 1
                     coverage_rate = (covered_area / polygon_area) * 100 if polygon_area > 0 else 0
 
-                cv2.putText(overlay, f"Coverage: {coverage_rate:.2f}%", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                            (0, 139, 255), 2)
+                cv2.putText(overlay, f"Coverage: {coverage_rate:.2f}%", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 139, 255), 2)
 
                 # 显示进度条
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -213,10 +358,8 @@ class TrajectoryLine:
                 progress = current_frame / total_frames if total_frames > 0 else 0
 
                 progress_bar_width = int(self.FRAME_WIDTH * progress)
-                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (self.FRAME_WIDTH, self.FRAME_HEIGHT), (50, 50, 50),
-                              -1)
-                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (progress_bar_width, self.FRAME_HEIGHT),
-                              (0, 255, 0), -1)
+                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (self.FRAME_WIDTH, self.FRAME_HEIGHT), (50, 50, 50), -1)
+                cv2.rectangle(overlay, (0, self.FRAME_HEIGHT - 10), (progress_bar_width, self.FRAME_HEIGHT), (0, 255, 0), -1)
 
                 # 显示结果帧
                 alpha = 0.3
@@ -226,24 +369,21 @@ class TrajectoryLine:
                 cv2.imshow("Tracking", result_track_frame)
 
                 key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
+                if key == ord('q') or key == ord('Q'):
+                    end_status = 'No'
                     break
                 elif key == ord(' '):
-                    try:
-                        init_box = cv2.selectROI("Select object", frame, fromCenter=False)
-                        # ROI 选择窗口被关闭或未选目标时，init_box 可能全为0
-                        if init_box is not None and all(v > 0 for v in init_box):
-                            tracker = self.create_tracker()
-                            if tracker is not None:
-                                tracker.init(frame, init_box)
-                                print("目标选择完成，开始跟踪")
-                            else:
-                                print("无法初始化跟踪器，请确保已安装 OpenCV contrib 模块")
+                    init_box = cv2.selectROI("Select object", frame, fromCenter=False)
+                    if any(init_box):
+                        tracker = self.create_tracker()
+                        if tracker is not None:
+                            tracker.init(frame, init_box)
+                            current_track_points = []
+                            all_track_points.extend(current_track_points)
+                            print("目标选择完成，开始跟踪")
                         else:
-                            print("未选择有效目标，跳过本次跟踪")
-                        cv2.destroyWindow("Select object")
-                    except Exception as e:
-                        print(f"选择目标或初始化跟踪器时出错: {e}")
+                            print("无法初始化跟踪器，请确保已安装 OpenCV contrib 模块")
+                    cv2.destroyWindow("Select object")
 
                 if tracker:
                     success, bbox = tracker.update(frame)
@@ -261,29 +401,35 @@ class TrajectoryLine:
                 if ret:
                     frame = cv2.resize(frame, (self.FRAME_WIDTH, self.FRAME_HEIGHT))
 
-            cap.release()
-            cv2.destroyAllWindows()
-
+            # 保存最后一帧图片
             if len(all_track_points) > 0:
-                # 保存最后一帧带有轨迹线和覆盖率的图像
                 output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "picture")
                 os.makedirs(output_dir, exist_ok=True)
-
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_path = os.path.join(output_dir, f"Coverage_rate_{timestamp}.png")
-
-                cv2.imwrite(output_path, result_frame)
+                # 使用PIL保存图片，设置dpi为300
+                pil_img = Image.fromarray(cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB))
+                pil_img.save(output_path, dpi=(300, 300))
                 print(f"图像已保存至 {output_path}")
+                # 写入Excel
+                info['end_status'] = end_status
+                info['coverage'] = f"{coverage_rate:.2f}%"
+                append_to_excel(info, output_path)
             else:
                 print("未检测到有效的轨迹线")
 
         except Exception as e:
+            logging.error(f"处理视频时出现错误: {str(e)}")
             print(f"处理视频时出现错误: {str(e)}")
+        finally:
+            if 'cap' in locals():
+                cap.release()
             cv2.destroyAllWindows()
 
 
 class MainApplication:
     def __init__(self, root):
+        print("进入MainApplication.__init__")
         self.root = root
         self.root.title("Beatbot软测工具")
         self.is_parsing = False  # 防抖标志
@@ -357,12 +503,13 @@ class MainApplication:
             pass
 
     def create_function_areas(self):
-        functions = [
-            {"name": "轨迹线绘制", "command": self.mcu_tools, "row": 0, "column": 0,
-             "icon": resource_path("icons/轨迹线绘制.jpeg")},
-            {"name": "文件解析", "command": self.unzip_and_parse_zip, "row": 0, "column": 1,
-             "icon": resource_path("icons/文件解析.jpeg")},
-            {"name": "使用帮助", "command": self.show_help, "row": 0, "column": 2, "icon": resource_path("icons/使用帮助.jpeg")},
+        """创建功能区域（卡片尺寸固定+进度条区始终占位）"""
+        self.card_progress = {}
+        function_cards = [
+            {"name": "轨迹线绘制", "command": self.mcu_tools, "row": 0, "column": 0, "icon": resource_path("icons/轨迹线绘制.jpeg")},
+            {"name": "日志解析", "command": self.unzip_and_parse_zip, "row": 0, "column": 1, "icon": resource_path("icons/日志解析.jpeg")},
+            {"name": "日志打包下载", "command": self.pack_log, "row": 0, "column": 2, "icon": resource_path("icons/日志打包下载.jpeg")},
+            {"name": "使用帮助", "command": self.show_help, "row": 0, "column": 3, "icon": resource_path("icons/使用帮助.jpeg")},
         ]
         for i in range(2):
             self.main_frame.grid_rowconfigure(i, weight=1)
@@ -370,89 +517,81 @@ class MainApplication:
             self.main_frame.grid_columnconfigure(i, weight=1)
         for row in range(2):
             for col in range(4):
-                func = next((f for f in functions if f["row"] == row and f["column"] == col), None)
+                func = next((f for f in function_cards if f["row"] == row and f["column"] == col), None)
                 frame = ttk.Frame(
                     self.main_frame,
                     relief='solid',
-                    borderwidth=1
+                    borderwidth=1,
+                    width=260,
+                    height=220
                 )
                 frame.grid(
                     row=row,
                     column=col,
-                    rowspan=1,
-                    columnspan=1,
-                    sticky=(tk.W, tk.E, tk.N, tk.S),
-                    padx=8,
-                    pady=8
+                    sticky="nsew",
+                    padx=16,
+                    pady=16
                 )
+                frame.grid_propagate(False)
+                frame.pack_propagate(False)
+                # 内容区
+                content = ttk.Frame(frame)
+                content.pack(expand=True, fill='both')
+                # 进度条区（始终占位）
+                progress_area = ttk.Frame(frame, height=40)
+                progress_area.pack(fill='x', side='bottom')
+                progress_area.pack_propagate(False)
                 if func:
-                    container = ttk.Frame(frame)
-                    container.place(relx=0.5, rely=0.5, anchor='center')
-                    try:
-                        if func["icon"]:
-                            img = Image.open(func["icon"]).resize((128, 128))
-                            photo = ImageTk.PhotoImage(img)
-                            icon_label = ttk.Label(
-                                container,
-                                image=photo,
-                                style='Icon.TLabel',
-                                cursor='hand2'
-                            )
-                            icon_label.image = photo
-                        else:
-                            raise Exception
-                    except Exception:
-                        icon_label = ttk.Label(
-                            container,
-                            text='📖' if func["name"] == '使用帮助' else ('📊' if func["name"] == '轨迹线绘制' else '🗂️'),
-                            style='Icon.TLabel',
-                            cursor='hand2'
-                        )
-                    icon_label.pack(pady=(0, 2))
-                    name_label = ttk.Label(
-                        container,
-                        text=func["name"],
-                        style='Function.TLabel',
-                        cursor='hand2'
-                    )
-                    name_label.pack()
-                    # 如果是文件解析功能，创建底部Frame放进度条，并用place定位
-                    if func["name"] == "文件解析":
-                        self.progress_bottom = ttk.Frame(frame)
-                        self.progress_bar = ttk.Progressbar(self.progress_bottom, maximum=100,
-                                                            variable=self.progress_var, length=180)
-                        self.progress_label = ttk.Label(self.progress_bottom, text="")
-                        self.progress_bar.pack(side="top", fill="x", padx=10)
-                        self.progress_label.pack(side="top")
-                        self.progress_bottom.place(relx=0.5, rely=0.98, anchor='s', relwidth=0.9)
-                        self.progress_bottom.place_forget()  # 初始隐藏
+                    icon_img = None
+                    if func["icon"] and os.path.exists(func["icon"]):
+                        try:
+                            img = Image.open(func["icon"])
+                            img = img.resize((64, 64), Image.ANTIALIAS)
+                            icon_img = ImageTk.PhotoImage(img)
+                        except Exception:
+                            pass
+                    label = ttk.Label(content, text=func["name"], style='Function.TLabel', image=icon_img, compound='top')
+                    label.image = icon_img
+                    label.pack(expand=True, fill='both', pady=(20, 0))
+                    label.bind("<Button-1>", lambda e, f=func["command"]: f())
+                    # 独立进度条和标签
+                    progress_var = tk.DoubleVar()
+                    progress_bar = ttk.Progressbar(progress_area, variable=progress_var, length=180, mode='determinate')
+                    progress_label = ttk.Label(progress_area, text="", font=("微软雅黑", 10))
+                    progress_bar.pack(side='top', fill='x', padx=20, pady=(5, 0))
+                    progress_label.pack(side='top', fill='x', padx=20, pady=(0, 10))
+                    progress_bar.pack_forget()
+                    progress_label.pack_forget()
+                    self.card_progress[(row, col)] = {
+                        'bar': progress_bar,
+                        'label': progress_label,
+                        'var': progress_var
+                    }
 
-                        # 拖拽支持
-                        def on_drop(event):
-                            import os
-                            paths = event.data.split()
-                            folders = [p.strip('{}') for p in paths if os.path.isdir(p.strip('{}'))]
-                            if folders:
-                                threading.Thread(target=lambda: self.batch_convert_multi_folders(folders),
-                                                 daemon=True).start()
+    def show_card_progress(self, row, col, total):
+        p = self.card_progress.get((row, col))
+        if p:
+            p['bar'].config(maximum=total)
+            p['var'].set(0)
+            p['bar'].pack(side='top', fill='x', padx=20, pady=(5, 0))
+            p['label'].pack(side='top', fill='x', padx=20, pady=(0, 10))
 
-                        frame.drop_target_register(DND_FILES)
-                        frame.dnd_bind('<<Drop>>', on_drop)
-                    # 修正事件绑定，避免闭包陷阱
-                    for widget in [frame, container, icon_label, name_label]:
-                        widget.bind('<Button-1>', self._make_card_command(func["command"]))
+    def update_card_progress(self, row, col, value, total, text=None):
+        p = self.card_progress.get((row, col))
+        if p:
+            p['bar'].config(maximum=total)
+            p['var'].set(value)
+            if text:
+                p['label'].config(text=text)
+            else:
+                percent = int((value / total) * 100)
+                p['label'].config(text=f"进度：{percent}%")
 
-                    def on_enter(e, f=frame):
-                        f.configure(relief='raised')
-
-                    def on_leave(e, f=frame):
-                        f.configure(relief='solid')
-
-                    for widget in [frame, container, icon_label, name_label]:
-                        widget.bind('<Enter>', on_enter)
-                        widget.bind('<Leave>', on_leave)
-                else:
-                    pass
+    def close_card_progress(self, row, col):
+        p = self.card_progress.get((row, col))
+        if p:
+            p['bar'].pack_forget()
+            p['label'].pack_forget()
 
     def _make_card_command(self, cmd):
         return lambda e: cmd()
@@ -461,33 +600,48 @@ class MainApplication:
         threading.Thread(target=self._mcu_tools_impl, daemon=True).start()
 
     def _mcu_tools_impl(self):
-        video_path = filedialog.askopenfilename(
-            title="选择视频文件",
-            filetypes=[
-                ("MP4 文件", "*.mp4"),
-                ("AVI 文件", "*.avi"),
-                ("MOV 文件", "*.mov"),
-                ("MKV 文件", "*.mkv"),
-                ("所有文件", "*.*")
-            ]
-        )
-        if video_path:
-            self.trajectory.process_video(video_path)
+        info = show_info_dialog()  # Show info dialog first
+        if info:
+            video_path = filedialog.askopenfilename(
+                title="选择视频文件",
+                filetypes=[
+                    ("MP4 文件", "*.mp4"),
+                    ("AVI 文件", "*.avi"),
+                    ("MOV 文件", "*.mov"),
+                    ("MKV 文件", "*.mkv"),
+                    ("所有文件", "*.*")
+                ]
+            )
+            if video_path:
+                self.trajectory.process_video(video_path, info)
 
     def show_progress(self, total):
-        self.progress_var.set(0)
+        if not hasattr(self, 'progress_var'):
+            self.progress_var = tk.DoubleVar()
+        if not hasattr(self, 'progress_bar') or self.progress_bar is None:
+            self.progress_bar = ttk.Progressbar(self.main_frame, maximum=total, variable=self.progress_var, length=400)
+            self.progress_bar.grid(row=2, column=0, columnspan=4, sticky='ew', padx=20, pady=(10, 0))
+        if not hasattr(self, 'progress_label') or self.progress_label is None:
+            self.progress_label = ttk.Label(self.main_frame, text="", font=("微软雅黑", 12))
+            self.progress_label.grid(row=3, column=0, columnspan=4, sticky='ew', padx=20)
         self.progress_bar.config(maximum=total)
-        self.progress_label.config(text="正在解析 0/{}".format(total))
-        self.progress_bottom.place(relx=0.5, rely=0.98, anchor='s', relwidth=0.9)
-        self.root.update()
+        self.progress_var.set(0)
+        self.progress_bar.grid()
+        self.progress_label.grid()
 
     def update_progress(self, value, total):
-        self.progress_var.set(value)
-        self.progress_label.config(text="正在解析 {}/{}".format(value, total))
-        self.root.update_idletasks()
+        if hasattr(self, 'progress_bar') and self.progress_bar:
+            self.progress_bar.config(maximum=total)
+            self.progress_var.set(value)
+            self.progress_bar.update()
+        if hasattr(self, 'progress_label') and self.progress_label:
+            self.progress_label.update()
 
     def close_progress(self):
-        self.progress_bottom.place_forget()
+        if hasattr(self, 'progress_bar') and self.progress_bar:
+            self.progress_bar.grid_remove()
+        if hasattr(self, 'progress_label') and self.progress_label:
+            self.progress_label.grid_remove()
 
     def show_help(self):
         if hasattr(self, 'help_win') and self.help_win and self.help_win.winfo_exists():
@@ -498,11 +652,19 @@ class MainApplication:
         self.help_win.geometry("520x400")
         self.help_win.resizable(False, False)
         help_text = (
+            "【环境依赖项】\n"
+            "1. 安装 Tesseract-OCR，安装后需要在path中配置环境。\n"
+            "2. 将C:\\Program Files\\Tesseract-OCR复制粘贴至path中后确定。\n"
+            "3. 安装VC_redist.x64.exe，一直下一步。\n\n"
             "【轨迹线绘制】\n"
-            "1. 点击'轨迹线绘制'卡片，选择视频文件。\n"
-            "2. 用鼠标左键依次点击视频画面，绘制多边形区域，右键闭合。\n"
-            "3. 按空格选择跟踪目标，目标跟踪后会显示轨迹线和覆盖率。\n"
-            "4. 按q退出，结果图片自动保存。\n\n"
+            "1. 点击'轨迹线绘制'卡片，填写机器序号、泳池编号、阶段、固件版本号等信息。\n"
+            "2. 选择视频文件。\n"
+            "3. 用鼠标左键依次点击视频画面，绘制多边形区域，右键闭合。\n"
+            "4. 按空格选择跟踪目标，目标跟踪后会显示轨迹线和覆盖率。\n"
+            "5. 按q或Shift+Q手动结束，结束状态为No，视频播放完毕自动结束为Yes。\n"
+            "6. 轨迹线绘制信息（含图片、覆盖率、结束状态等）会自动写入Excel表格，图片自动缩放嵌入单元格。\n"
+            "7. 需要本机已安装Tesseract-OCR（并配置到PATH），否则无法识别视频时间。\n"
+            "8. openpyxl依赖已集成打包，无需单独安装。源码运行需pip install openpyxl。\n\n"
             "【文件解析】\n"
             "1. 点击'文件解析'卡片，可选择zip、tar.gz或tar格式的压缩包，自动解压并解析所有bin文件。\n"
             "2. 解析进度通过进度条显示，全部完成后弹窗提示解析数量。\n"
@@ -549,13 +711,13 @@ class MainApplication:
                     bin_files.append((os.path.join(root, file), root, file))
         print(f"[DEBUG] 查找到bin文件: {bin_files}")
         total = len(bin_files)
-        self.root.after(0, lambda: self.show_progress(total))
+        self.root.after(0, lambda: self.show_card_progress(0, 1, total))
         count = 0
         with ProcessPoolExecutor(max_workers=4) as executor:
             for result in executor.map(process_one_bin, bin_files):
                 count += result
-                self.root.after(0, lambda c=count: self.update_progress(c, total))
-        self.root.after(0, self.close_progress)
+                self.root.after(0, lambda c=count: self.update_card_progress(0, 1, c, total, f"解析中... ({c}/{total})"))
+        self.root.after(0, self.close_card_progress(0, 1))
         self.root.after(0, lambda: messagebox.showinfo("完成", f"共解析了 {count} 个 bin 文件"))
 
     def batch_convert_multi_folders(self, folders):
@@ -592,7 +754,7 @@ class MainApplication:
 
         total = len(all_bin_files)
         print(f"[DEBUG] 拖拽解析，总共 {total} 个 bin 文件")
-        self.root.after(0, lambda: self.show_progress(total))
+        self.root.after(0, lambda: self.show_card_progress(0, 1, total))
 
         def run_and_update():
             count = 0
@@ -605,13 +767,13 @@ class MainApplication:
                         count += result
                     except Exception as e:
                         print(f"[ERROR] 子任务失败: {e}")
-                    self.root.after(0, lambda i=i: self.update_progress(i, total))
+                    self.root.after(0, lambda i=i: self.update_card_progress(0, 1, i, total, f"解析中... ({i}/{total})"))
 
             def show_msg():
                 if self._has_shown_multi_folder_msg:
                     return
                 self._has_shown_multi_folder_msg = True
-                self.close_progress()
+                self.close_card_progress(0, 1)
                 self.progress_label.config(
                     text=f"已将 {count} 个 bin 文件转为明文 log，其他文件已原样保留到各自 _log 文件夹"
                 )
@@ -625,10 +787,91 @@ class MainApplication:
 
         threading.Thread(target=run_and_update, daemon=True).start()
 
+    def is_same_lan(self, ip):
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+            return '.'.join(local_ip.split('.')[:3]) == '.'.join(ip.split('.')[:3])
+        except:
+            return False
+
+    def pack_log(self):
+        """日志打包下载功能"""
+        ip = simpledialog.askstring("输入", "请输入设备IP：")
+        if not ip:
+            return
+        if not self.is_same_lan(ip):
+            messagebox.showerror("网络错误", "不在同一局域网内，请检查IP！")
+            return
+        # 显示进度条（使用日志打包下载卡片的进度条）
+        self.show_card_progress(0, 2, 100)
+        self.update_card_progress(0, 2, 0, 100, "打包中...")
+        def do_pack():
+            try:
+                # 1. adb connect
+                self.update_card_progress(0, 2, 0, 100, "正在连接设备...")
+                connect_proc = subprocess.run(f'adb connect {ip}:5555', shell=True, capture_output=True, text=True, timeout=10)
+                if ("connected" not in connect_proc.stdout) and ("already connected" not in connect_proc.stdout):
+                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("连接失败", connect_proc.stdout+connect_proc.stderr)])
+                    return
+                # 2. 执行pack命令
+                self.update_card_progress(0, 2, 10, 100, "执行pack命令...")
+                pack_proc = subprocess.run(f'adb shell pack', shell=True, capture_output=True, text=True, timeout=300)
+                print("[PACK_CMD_OUT]", pack_proc.stdout)
+                print("[PACK_CMD_ERR]", pack_proc.stderr)
+                # 3. 查找日志包
+                self.update_card_progress(0, 2, 60, 100, "打包完成，准备下载日志包...")
+                ls_cmd = "adb shell ls /data/"
+                ls_proc = subprocess.run(ls_cmd, shell=True, capture_output=True, text=True)
+                print("[DEBUG] adb shell ls /data/ 输出：")
+                print(ls_proc.stdout)
+                ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
+                log_files = []
+                pattern = re.compile(r"^manual_pack-.*\.tar\.gz$")
+                for f in ls_proc.stdout.splitlines():
+                    fname = ansi_escape.sub('', f.strip())
+                    if not fname:
+                        continue
+                    print(f"[DEBUG] 文件名: '{fname}' repr: {repr(fname)} len: {len(fname)}")
+                    if pattern.match(fname):
+                        log_files.append(fname)
+                print(f"[DEBUG] 匹配到的日志包文件: {log_files}")
+                if not log_files:
+                    print("[ERROR] 未找到日志包，全部文件名如下：")
+                    for f in ls_proc.stdout.splitlines():
+                        print(f"  [ALL FILE] '{f}'")
+                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("未找到日志包", "设备未生成日志包，请检查pack脚本")])
+                    return
+                # 4. 下载日志包
+                remote_log_file = f"/data/{log_files[0]}"
+                local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+                os.makedirs(local_path, exist_ok=True)
+                self.update_card_progress(0, 2, 80, 100, "正在下载日志包...")
+                pull_cmd = f'adb pull {remote_log_file} {local_path}'
+                proc = subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                out, _ = proc.communicate()
+                if proc.returncode != 0:
+                    self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("下载失败", out.decode(errors='ignore'))])
+                    return
+                self.update_card_progress(0, 2, 100, 100, "日志打包并下载完成")
+                self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showinfo("完成", f"日志已下载至: {local_path}")])
+            except Exception as e:
+                self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("异常", f"日志打包流程异常：{e}")])
+        threading.Thread(target=do_pack, daemon=True).start()
+
 
 # 保证主入口只在主进程执行，防止多进程时重复启动GUI
 if __name__ == "__main__":
-    multiprocessing.freeze_support()  # 兼容 pyinstaller 多进程打包
-    root = TkinterDnD.Tk()
-    app = MainApplication(root)
-    root.mainloop()
+    import traceback
+    print("程序已启动")
+    try:
+        multiprocessing.freeze_support()  # 兼容 pyinstaller 多进程打包
+        print("准备初始化TkinterDnD")
+        root = TkinterDnD.Tk()
+        print("TkinterDnD初始化完成")
+        app = MainApplication(root)
+        print("MainApplication初始化完成")
+        root.mainloop()
+    except Exception as e:
+        print("程序启动异常：", e)
+        traceback.print_exc()
+        input("按回车键退出...")
