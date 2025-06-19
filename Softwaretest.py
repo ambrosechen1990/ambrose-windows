@@ -914,11 +914,11 @@ class MainApplication:
             try:
                 self.root.after(0, lambda: self.show_card_progress(0, 2, 100, "正在连接设备..."))
                 root_cmd = f'adb -s {ip}:5555 root'
-                subprocess.Popen(root_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=10)
+                subprocess.Popen(root_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=30)
                 self.root.after(0, lambda: self.update_card_progress(0, 2, 20, 100, "正在连接设备..."))
                 connect_cmd = f'adb connect {ip}:5555'
                 proc = subprocess.Popen(connect_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                out, _ = proc.communicate(timeout=10)
+                out, _ = proc.communicate(timeout=30)
                 out_str = out.decode(errors='ignore')
                 if 'connected to' not in out_str:
                     self.root.after(0, lambda: [self.close_card_progress(0, 2), messagebox.showerror("连接失败", f"ADB连接失败：{out_str}")])
@@ -929,20 +929,20 @@ class MainApplication:
                 try:
                     sn_cmd = f'adb -s {ip}:5555 shell "cat /mnt/private/sn.txt"'
                     sn_proc = subprocess.Popen(sn_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    sn_out, _ = sn_proc.communicate(timeout=10)
+                    sn_out, _ = sn_proc.communicate(timeout=30)
                     sn = sn_out.decode(errors='ignore').strip()
                     if not sn or "not found" in sn or "error" in sn.lower():
                         # 尝试hostname
                         sn_cmd2 = f'adb -s {ip}:5555 shell "hostname"'
                         sn_proc2 = subprocess.Popen(sn_cmd2, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                        sn_out2, _ = sn_proc2.communicate(timeout=10)
+                        sn_out2, _ = sn_proc2.communicate(timeout=30)
                         sn = sn_out2.decode(errors='ignore').strip() or "UNKNOWN"
                 except Exception:
                     sn = "UNKNOWN"
                 # 获取时间戳
                 time_cmd = f'adb -s {ip}:5555 shell "date +%Y-%m-%d-%H-%M-%S"'
                 time_proc = subprocess.Popen(time_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                timestamp, _ = time_proc.communicate(timeout=10)
+                timestamp, _ = time_proc.communicate(timeout=30)
                 timestamp = timestamp.decode(errors='ignore').strip()
                 # 打包前删除旧包
                 clean_cmd = f'adb -s {ip}:5555 shell "rm -f /data/manual_pack-{sn}-*.tar.gz"'
@@ -955,13 +955,13 @@ class MainApplication:
                     '/data/clean_record /data/conf /data/DP_clean_record /data/log /data/transfer_data '
                     '/etc/os_version /mnt/private /tmp/log /tmp/XM_LOG"'
                 )
-                subprocess.Popen(pack_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=300)
+                subprocess.Popen(pack_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=600)
                 self.root.after(0, lambda: self.update_card_progress(0, 2, 70, 100, "正在下载日志包..."))
                 dist_dir = r'D:\\dist'
                 os.makedirs(dist_dir, exist_ok=True)
                 local_path = os.path.join(dist_dir, os.path.basename(tar_name))
                 pull_cmd = f'adb -s {ip}:5555 pull {tar_name} "{local_path}"'
-                subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=300)
+                subprocess.Popen(pull_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate(timeout=600)
                 self.root.after(0, lambda: [self.update_card_progress(0, 2, 100, 100, "日志打包并下载完成"), self.close_card_progress(0, 2), messagebox.showinfo("完成", f"日志已下载至: {local_path}")])
             except Exception as e:
                 err_msg = str(e)
